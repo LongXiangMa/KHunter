@@ -262,9 +262,6 @@
                 <li class="nav-item" data-page="analysis">
                     <span class="icon">📈</span> 个股图谱
                 </li>
-                <li class="nav-item" data-page="money-flow">
-                    <span class="icon">💰</span> 资金流向
-                </li>
                 <li class="nav-item" data-page="stock-ranking">
                     <span class="icon">🏆</span> 选股排名
                 </li>
@@ -365,8 +362,11 @@
                         <div class="stat-card temp-stat-card" onclick="openTemperatureModal()">
                             <div class="stat-icon">🌡️</div>
                             <div class="stat-info">
-                                <h3 id="stat-temperature" class="temp-display">-</h3>
-                                <span id="stat-temp-status" class="temp-badge">-</span>
+                                <div class="temp-main-row">
+                                    <h3 id="stat-temperature" class="temp-display">-</h3>
+                                    <span id="stat-temp-status" class="temp-badge">-</span>
+                                </div>
+                                <div id="stat-temp-action" class="temp-action">-</div>
                             </div>
                             <div class="stat-arrow">→</div>
                         </div>
@@ -2231,6 +2231,7 @@
             </div>
             <div class="modal-footer">
                 <button class="btn btn-primary" onclick="refreshTemperatureData()">刷新数据</button>
+                <button class="btn btn-warning" onclick="recalculateTemperatureData()">重新计算当日温度</button>
                 <button class="btn btn-secondary" onclick="closeTemperatureModal()">关闭</button>
             </div>
         </div>
