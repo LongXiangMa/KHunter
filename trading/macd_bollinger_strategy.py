@@ -249,121 +249,120 @@ class ShunShiBaoStrategy(TimingStrategy):
         
         return macd_sell_3 and boll_sell_3
     
-    def get_timing_result(self, df: pd.DataFrame, position: Optional[Dict] = None, 
+    def get_timing_result(self, df: pd.DataFrame, position: Optional[Dict] = None,
                           cash: Optional[float] = None, use_prev_day_signal: bool = True) -> TimingResult:
         """获取择时结果
-        
+
         Args:
             df: 股票数据DataFrame
             position: 持仓信息
             cash: 可用资金
             use_prev_day_signal: 是否使用前一天信号
-                - True: 回测模式，使用T-1日数据判断信号
-                - False: 狩猎场模式，使用T日数据判断信号
-                
+                - True: 回测模式，使用T-1日信号K线判断（信号K线=DF.iloc[-2]，执行日=DF.iloc[-1]）
+                - False: 狩猎场模式，使用T日信号K线判断（信号K线=DF.iloc[-1]）
+                回测模式逻辑：
+                    - T-1日收盘后判断是否有买入信号
+                    - 如果有信号，在T日以开盘价买入
+                狩猎场模式逻辑：
+                    - T日盘中或收盘判断是否有买入信号
+                    - 如果有信号，在T日以当前价买入
+
         Returns:
             TimingResult对象
         """
         result = TimingResult()
-        
-        # 计算指标
+
         df = self.calculate_indicators(df)
-        
-        # 数据验证
+
         if len(df) < 2:
             return result
-        
-        # 获取当前和前一日数据
-        current = df.iloc[-1]
-        prev = df.iloc[-2]
-        
-        # 检查指标完整性
-        if not self._check_indicators_valid(current) or not self._check_indicators_valid(prev):
+
+        if use_prev_day_signal:
+            if len(df) < 3:
+                return result
+            signal_bar = df.iloc[-2]
+            latest_bar = df.iloc[-1]
+            prev_bar = df.iloc[-3]
+        else:
+            signal_bar = df.iloc[-1]
+            latest_bar = df.iloc[-1]
+            prev_bar = df.iloc[-2]
+
+        if not self._check_indicators_valid(signal_bar) or not self._check_indicators_valid(prev_bar):
             return result
-        
-        # 判断信号逻辑：
-        # - 无持仓时：检查一档买入 → 二档买入
-        # - 有持仓时：检查加仓信号 → 一档买入（作为加仓）→ 二档买入（作为加仓）
+
         if not position:
-            # 无持仓：检查买入信号
-            if self._check_buy_signal_1(current, prev):
+            if self._check_buy_signal_1(signal_bar, prev_bar):
                 result.is_buy = True
                 result.message = "MACD零轴上方金叉且价格突破中轨，买入信号（稳健型）"
                 result.signal_strength = 1.0
                 result.trade_type = 'buy'
-            elif self._check_buy_signal_2(current, prev):
+            elif self._check_buy_signal_2(signal_bar, prev_bar):
                 result.is_buy = True
                 result.message = "MACD强势且价格突破上轨，买入信号（突破型）"
                 result.signal_strength = 0.8
                 result.trade_type = 'buy'
         else:
-            # 有持仓：检查加仓信号或买入信号，都作为加仓处理
-            if self._check_add_signal(current, prev):
+            if self._check_add_signal(signal_bar, prev_bar):
                 result.is_buy = True
                 result.message = "MACD持续强势且放量突破上轨，加仓信号"
                 result.signal_strength = 0.9
                 result.trade_type = 'add'
-                # 计算加仓数量：使用已有持仓数量的一半
                 current_quantity = position.get('quantity', 0)
                 add_quantity = int(current_quantity * 0.5) // 100 * 100
                 result.buy_quantity = max(add_quantity, 100)
-            elif self._check_buy_signal_1(current, prev):
+            elif self._check_buy_signal_1(signal_bar, prev_bar):
                 result.is_buy = True
                 result.message = "MACD零轴上方金叉且价格突破中轨，加仓信号（稳健型）"
                 result.signal_strength = 1.0
                 result.trade_type = 'add'
-                # 计算加仓数量：使用已有持仓数量的一半
                 current_quantity = position.get('quantity', 0)
                 add_quantity = int(current_quantity * 0.5) // 100 * 100
                 result.buy_quantity = max(add_quantity, 100)
-            elif self._check_buy_signal_2(current, prev):
+            elif self._check_buy_signal_2(signal_bar, prev_bar):
                 result.is_buy = True
                 result.message = "MACD强势且价格突破上轨，加仓信号（突破型）"
                 result.signal_strength = 0.8
                 result.trade_type = 'add'
-                # 计算加仓数量：使用已有持仓数量的一半
                 current_quantity = position.get('quantity', 0)
                 add_quantity = int(current_quantity * 0.5) // 100 * 100
                 result.buy_quantity = max(add_quantity, 100)
-        
-        # 判断清仓信号（优先级：三档 > 一档 > 二档）
+
         if not result.is_buy:
-            if self._check_sell_signal_3(current, prev):
+            if self._check_sell_signal_3(signal_bar, prev_bar):
                 result.is_sell = True
                 result.message = "DIF<0且放量跌破下轨，清仓信号（破位型）"
                 result.signal_strength = 1.0
                 result.trade_type = 'sell'
                 if position:
                     result.sell_quantity = position.get('quantity', 0)
-            elif self._check_sell_signal_1(current, prev):
+            elif self._check_sell_signal_1(signal_bar, prev_bar):
                 result.is_sell = True
                 result.message = "MACD转负且价格跌破中轨，清仓信号（止损型）"
                 result.signal_strength = 1.0
                 result.trade_type = 'sell'
                 if position:
                     result.sell_quantity = position.get('quantity', 0)
-            elif self._check_sell_signal_2(current, prev):
+            elif self._check_sell_signal_2(signal_bar, prev_bar):
                 result.is_sell = True
                 result.message = "MACD顶背离且上轨回落，清仓信号（止盈型）"
                 result.signal_strength = 0.7
                 result.trade_type = 'sell'
                 if position:
                     result.sell_quantity = position.get('quantity', 0)
-        
-        # 填充支撑位和压力位
-        result.support_level = current['boll_lower']
-        result.resistance_level = current['boll_upper']
-        
-        # 填充指标值
+
+        result.support_level = latest_bar['boll_lower']
+        result.resistance_level = latest_bar['boll_upper']
+
         result.indicators = {
-            'dif': current['dif'],
-            'dea': current['dea'],
-            'macd_hist': current['macd'],
-            'boll_upper': current['boll_upper'],
-            'boll_mid': current['boll_mid'],
-            'boll_lower': current['boll_lower'],
-            'boll_width': current['boll_upper'] - current['boll_lower'],
-            'current_price': current['close']
+            'dif': latest_bar['dif'],
+            'dea': latest_bar['dea'],
+            'macd_hist': latest_bar['macd'],
+            'boll_upper': latest_bar['boll_upper'],
+            'boll_mid': latest_bar['boll_mid'],
+            'boll_lower': latest_bar['boll_lower'],
+            'boll_width': latest_bar['boll_upper'] - latest_bar['boll_lower'],
+            'current_price': latest_bar['close']
         }
         
         return result
