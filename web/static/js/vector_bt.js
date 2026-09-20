@@ -79,6 +79,9 @@
       take_profit: (parseFloat($('vector-take').value) || 21) / 100,
       regime_filter: regime,
       regime_fixed: regime === 'fixed' ? 0.01557 : null,
+      save: $('vector-save') ? $('vector-save').checked : false,
+      backtest_name: `向量化回测 ${$('vector-start').value}~${$('vector-end').value}` +
+        (regime === 'off' ? '（无过滤）' : regime === 'rolling' ? '（滚动过滤）' : '（固定过滤）'),
     };
     if (!payload.start || !payload.end) { status.textContent = '请选择回测区间'; return; }
     status.textContent = '回测中...（命中缓存时只需几秒；首次会先生成信号，可能较久）';

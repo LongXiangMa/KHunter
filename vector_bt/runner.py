@@ -257,6 +257,8 @@ def compare(
     config: BacktestConfig | None = None,
     benchmark: str | None = DEFAULT_BENCHMARK,
     regime_filter: pd.Series | None = None,
+    save: bool = False,
+    backtest_name: str | None = None,
     use_cache: bool = True,
     cache_dir: Path | str | None = None,
     verbose: bool = True,
@@ -350,6 +352,25 @@ def compare(
         table = table.sort_values("年化收益", ascending=False).reset_index(drop=True)
     else:
         table = pd.DataFrame()
+
+    # 可选：写入 KHunter 的 backtest_result / backtest_trade，Web 端「回测历史」可见
+    if save and results:
+        try:
+            from vector_bt.persistence import save_backtest_result
+
+            for name, res in results.items():
+                rid = save_backtest_result(
+                    res,
+                    backtest_name=backtest_name or f"向量化回测 {start}~{end}",
+                    initial_capital=cfg.initial_capital,
+                    max_daily_buys=cfg.max_daily_buys,
+                    db_path=db_path,
+                )
+                if verbose:
+                    print(f"  ✓ 已写入回测记录 #{rid}: {name}", flush=True)
+        except Exception as exc:
+            if verbose:
+                print(f"  ! 写入回测记录失败: {exc}", flush=True)
     return table, results, signals
 
 

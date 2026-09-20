@@ -122,6 +122,8 @@ def run_backtest_api():
             if payload.get("benchmark", DEFAULT_BENCHMARK) != "off"
             else None,
             regime_filter=regime_mask,
+            save=bool(payload.get("save", False)),
+            backtest_name=payload.get("backtest_name"),
             use_cache=bool(payload.get("use_cache", True)),
             verbose=False,
         )
