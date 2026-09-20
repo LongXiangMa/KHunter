@@ -32,6 +32,7 @@ data/*.db-shm
 data/*.db-wal
 data/akshare_cache/
 data/cache/
+data/vector_bt_cache/
 logs/
 reports/
 .kiro/

@@ -212,6 +212,16 @@ from utils.strategy_config_manager import StrategyConfigManager
 app.register_blueprint(khunter_bp)
 logger.info("已注册KHunter蓝图")
 
+# 注册向量化回测蓝图（策略对比 / 参数扫描 / 市场状态开关）
+try:
+    from vector_bt.routes import vector_bp
+    app.register_blueprint(vector_bp, url_prefix='/api/vector')
+    logger.info("已注册向量化回测蓝图")
+except Exception as e:
+    logger.error(f"注册向量化回测蓝图失败: {str(e)}")
+    import traceback as _tb
+    logger.error(_tb.format_exc())
+
 # 全局更新状态
 update_status = {
     'running': False,

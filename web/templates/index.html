@@ -336,6 +336,9 @@
                 <li class="nav-item" data-page="regime-backtest">
                     <span class="icon">🧭</span> 自适应回测
                 </li>
+                <li class="nav-item" data-page="vector">
+                    <span class="icon">🧪</span> 量化验证
+                </li>
                 
                 <!-- 数据管理 -->
                 <li class="nav-group-title">数据管理</li>
@@ -1227,6 +1230,141 @@
                                         </tr>
                                     </thead>
                                     <tbody id="regime-switches-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 量化验证页面（向量化回测 / 状态开关 / 参数扫描） -->
+                <div id="vector-page" class="page">
+                    <!-- 市场状态开关 -->
+                    <div class="card" style="margin-bottom:16px;">
+                        <div class="card-body">
+                            <h3 style="margin:0 0 6px;">市场状态开关（活跃度）</h3>
+                            <p style="color:#888;font-size:12px;margin:0 0 14px;">
+                                用全市场涨停家数占比的 5 日均值，与过去 250 个交易日的中位数比较，
+                                判断当前是否适合开新仓。11 年回测结论：涨停横盘策略在高活跃状态年化超额
+                                <b>+27.5%</b>，低活跃状态仅 <b>-3.8%</b>。
+                            </p>
+                            <div id="vector-regime-box"
+                                 style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px;">
+                                <div style="background:#fafafa;border:1px solid #eee;border-radius:6px;padding:12px;">
+                                    <div style="font-size:12px;color:#888;">交易日</div>
+                                    <div id="vr-date" style="font-size:16px;font-weight:600;">--</div>
+                                </div>
+                                <div style="background:#fafafa;border:1px solid #eee;border-radius:6px;padding:12px;">
+                                    <div style="font-size:12px;color:#888;">涨停家数占比（5日均）</div>
+                                    <div id="vr-ratio" style="font-size:16px;font-weight:600;">--</div>
+                                </div>
+                                <div style="background:#fafafa;border:1px solid #eee;border-radius:6px;padding:12px;">
+                                    <div style="font-size:12px;color:#888;">滚动阈值（250日中位）</div>
+                                    <div id="vr-threshold" style="font-size:16px;font-weight:600;">--</div>
+                                </div>
+                                <div style="background:#fafafa;border:1px solid #eee;border-radius:6px;padding:12px;">
+                                    <div style="font-size:12px;color:#888;">状态</div>
+                                    <div id="vr-state" style="font-size:16px;font-weight:600;">--</div>
+                                </div>
+                            </div>
+                            <div id="vr-advice" style="font-size:13px;color:#555;margin-bottom:12px;">--</div>
+                            <button type="button" id="vector-regime-refresh"
+                                    style="padding:7px 16px;cursor:pointer;">刷新状态</button>
+                        </div>
+                    </div>
+
+                    <!-- 策略对比回测 -->
+                    <div class="card" style="margin-bottom:16px;">
+                        <div class="card-body">
+                            <h3 style="margin:0 0 6px;">策略对比回测（向量化）</h3>
+                            <p style="color:#888;font-size:12px;margin:0 0 14px;">
+                                与「策略回测」页的区别：本页复用已缓存的信号矩阵，秒级出结果，
+                                适合横向比较多个策略；首次跑某区间需要生成信号（较慢）。
+                                交易规则：信号次日收盘买入、持有 N 日、涨停不可买、含分项交易成本。
+                            </p>
+                            <div style="margin-bottom:12px;">
+                                <label style="display:block;font-size:13px;margin-bottom:6px;">选择策略</label>
+                                <div id="vector-strategy-list"
+                                     style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px;font-size:13px;">
+                                    <span style="color:#999;">加载中...</span>
+                                </div>
+                            </div>
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:15px;margin-bottom:14px;">
+                                <div>
+                                    <label style="display:block;font-size:13px;margin-bottom:4px;">回测开始</label>
+                                    <input type="date" id="vector-start" style="width:100%;padding:6px;">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:13px;margin-bottom:4px;">回测结束</label>
+                                    <input type="date" id="vector-end" style="width:100%;padding:6px;">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:13px;margin-bottom:4px;">持有期（交易日）</label>
+                                    <input type="number" id="vector-hold" value="10" min="1" max="60" style="width:100%;padding:6px;">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:13px;margin-bottom:4px;">每日最多买入</label>
+                                    <input type="number" id="vector-buys" value="8" min="1" max="50" style="width:100%;padding:6px;">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:13px;margin-bottom:4px;">止损（%）</label>
+                                    <input type="number" id="vector-stop" value="-7" step="1" style="width:100%;padding:6px;">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:13px;margin-bottom:4px;">止盈（%）</label>
+                                    <input type="number" id="vector-take" value="21" step="1" style="width:100%;padding:6px;">
+                                </div>
+                                <div>
+                                    <label style="display:block;font-size:13px;margin-bottom:4px;">状态过滤</label>
+                                    <select id="vector-regime" style="width:100%;padding:6px;">
+                                        <option value="off">不过滤</option>
+                                        <option value="rolling">滚动阈值（实盘可用）</option>
+                                        <option value="fixed">固定阈值 1.557%</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div style="margin-bottom:16px;">
+                                <button type="button" id="vector-run-btn"
+                                        style="padding:8px 20px;background:#1677ff;color:#fff;border:none;border-radius:4px;cursor:pointer;">
+                                    开始回测
+                                </button>
+                                <span id="vector-status" style="margin-left:12px;color:#666;font-size:13px;"></span>
+                            </div>
+                            <div id="vector-result" style="display:none;">
+                                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                                    <thead><tr id="vector-result-head" style="background:#f5f5f5;"></tr></thead>
+                                    <tbody id="vector-result-body"></tbody>
+                                </table>
+                                <div style="margin-top:16px;">
+                                    <div style="font-size:13px;color:#666;margin-bottom:6px;">净值曲线</div>
+                                    <canvas id="vector-equity-chart" height="90"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 参数扫描 -->
+                    <div class="card">
+                        <div class="card-body">
+                            <h3 style="margin:0 0 6px;">参数扫描（止损 × 止盈 × 持有期）</h3>
+                            <p style="color:#888;font-size:12px;margin:0 0 14px;">
+                                固定信号、只变交易规则，扫描 4×4×3 = 48 组参数。
+                                关注<b>参数敏感度</b>：同一策略 48 组结果的极差越大，越可能是过拟合。
+                                异步执行，可离开页面，稍后回来查看。
+                            </p>
+                            <div style="margin-bottom:14px;">
+                                <button type="button" id="vector-sweep-btn"
+                                        style="padding:8px 20px;cursor:pointer;">开始扫描</button>
+                                <span id="vector-sweep-status" style="margin-left:12px;color:#666;font-size:13px;"></span>
+                            </div>
+                            <div id="vector-sweep-progress" style="display:none;margin-bottom:14px;">
+                                <div style="height:8px;background:#f0f0f0;border-radius:4px;overflow:hidden;">
+                                    <div id="vector-sweep-bar" style="height:100%;width:0%;background:#1677ff;transition:width .3s;"></div>
+                                </div>
+                            </div>
+                            <div id="vector-sweep-result" style="display:none;">
+                                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                                    <thead><tr id="vector-sweep-head" style="background:#f5f5f5;"></tr></thead>
+                                    <tbody id="vector-sweep-body"></tbody>
                                 </table>
                             </div>
                         </div>
@@ -2166,6 +2304,7 @@
     <script src="/static/js/init_simple.js?v=2"></script>
     <script src="/static/js/trading.js"></script>
     <script src="/static/js/data_update.js"></script>
+    <script src="/static/js/vector_bt.js?v=1"></script>
     
     <!-- 回测结果模态框 -->
     <div id="backtest-result-modal" class="modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
