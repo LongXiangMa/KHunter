@@ -479,3 +479,102 @@ def sweep(
     if not table.empty:
         table = table.sort_values("超额年化", ascending=False).reset_index(drop=True)
     return table
+
+
+def combo_sweep(
+    selection_strategies: Sequence[str],
+    timings: Sequence[str | None],
+    *,
+    start: str,
+    end: str,
+    signal_start: str | None = None,
+    signal_end: str | None = None,
+    db_path: str | Path | None = None,
+    khunter_root: str | Path | None = None,
+    jobs: int = 1,
+    window: int = 180,
+    min_history: int = 60,
+    config: BacktestConfig | None = None,
+    benchmark: str | None = DEFAULT_BENCHMARK,
+    regime_filter: pd.Series | None = None,
+    use_cache: bool = True,
+    cache_dir: Path | str | None = None,
+    verbose: bool = True,
+) -> pd.DataFrame:
+    """组合扫描：选股策略 × 择时策略 的矩阵回测。
+
+    与 ``compare`` 的差别：``compare`` 只跑选股（择时是单一开关），
+    本函数把每个选股策略与每个择时策略都配一遍，直接输出"哪一对最好"。
+
+    工程要点：**信号只加载一次、价格只加载一次、每个择时策略只创建一个评估器**，
+    在各选股策略之间共享（评估器内部有按股票/日期的缓存）。
+    """
+    cfg = config or BacktestConfig()
+    sig_start = signal_start or start
+    sig_end = signal_end or end
+    codes = list(data.load_symbols(db_path=db_path, start=sig_start, end=sig_end, min_rows=min_history))
+
+    if verbose:
+        print(f"组合扫描：{len(selection_strategies)} 选股 × {len(timings)} 择时，"
+              f"股票池 {len(codes)} 只，区间 {start} ~ {end}", flush=True)
+
+    signals_full = generate_signals(
+        selection_strategies, codes, sig_start, sig_end,
+        db_path=db_path, khunter_root=khunter_root, jobs=jobs,
+        window=window, min_history=min_history, use_cache=use_cache,
+        cache_dir=cache_dir, verbose=verbose,
+    )
+    lo, hi = pd.to_datetime(start), pd.to_datetime(end)
+    signals = {}
+    for name, frame in signals_full.items():
+        if frame.empty or not isinstance(frame.index, pd.DatetimeIndex):
+            signals[name] = frame
+            continue
+        sig = frame.loc[(frame.index >= lo) & (frame.index <= hi)]
+        if regime_filter is not None:
+            allow = regime_filter.reindex(sig.index).fillna(False).astype(bool)
+            sig = sig.where(allow, other=np.nan)
+        signals[name] = sig
+
+    close, high, low = price_frames(codes, start, end, db_path=db_path)
+    benchmark_series = None
+    if benchmark:
+        try:
+            benchmark_series = load_benchmark(benchmark, start, end, cache_dir=cache_dir)
+        except Exception:
+            pass
+
+    from vector_bt.timing import TIMING_NAMES, TimingEvaluator
+
+    evaluators: dict[str, TimingEvaluator] = {}
+    rows: list[dict] = []
+    for sel_name, sig in signals.items():
+        if sig.empty:
+            continue
+        for timing in timings:
+            key = timing or ""
+            if key and key not in evaluators:
+                evaluators[key] = TimingEvaluator(
+                    key, window=window, min_history=min_history, db_path=db_path
+                )
+            ev = evaluators.get(key)
+            res = run_backtest(
+                sig, close, high=high, low=low,
+                benchmark=benchmark_series, benchmark_name=str(benchmark or ""),
+                timing_buy_fn=ev.is_buy if ev else None,
+                timing_sell_fn=ev.is_sell if ev else None,
+                strategy=sel_name, config=cfg,
+            )
+            row = res.as_row()
+            row["选股策略"] = sel_name
+            row["择时策略"] = TIMING_NAMES.get(key, "不启用") if key else "不启用"
+            rows.append(row)
+            if verbose:
+                print(f"  · {sel_name} × {row['择时策略']}: "
+                      f"年化 {res.annual_return:.2%} 超额 {res.excess_annual_return:+.2%} "
+                      f"回撤 {res.max_drawdown:.1%} 交易 {res.trades}", flush=True)
+
+    table = pd.DataFrame(rows)
+    if not table.empty:
+        table = table.sort_values("超额年化", ascending=False).reset_index(drop=True)
+    return table

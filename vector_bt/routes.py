@@ -226,3 +226,60 @@ def task_status(task_id: str):
         snapshot = dict(task)
     snapshot.pop("trace", None)
     return jsonify({"success": True, "data": snapshot})
+
+
+@vector_bp.route("/combo", methods=["POST"])
+def run_combo_api():
+    """组合扫描（异步）：选股策略 × 择时策略 矩阵。"""
+    try:
+        payload = request.get_json() or {}
+        strategies = payload.get("strategies") or []
+        timings = payload.get("timings") or [None]
+        start, end = payload.get("start"), payload.get("end")
+        if not strategies or not start or not end:
+            return jsonify({"success": False, "error": "缺少参数：strategies / start / end"}), 400
+
+        task_id = uuid.uuid4().hex[:12]
+        with _TASK_LOCK:
+            _TASKS[task_id] = {"status": "pending", "type": "combo",
+                               "created_at": datetime.now().isoformat(timespec="seconds")}
+
+        def _job():
+            from vector_bt.runner import combo_sweep
+
+            regime_mask = None
+            method = payload.get("regime_filter", "off")
+            if method != "off":
+                regime_mask, _ = build_regime_filter(
+                    None, market_start=payload.get("signal_start") or start, market_end=end,
+                    method=method, fixed_threshold=payload.get("regime_fixed"),
+                )
+            cfg = BacktestConfig(
+                initial_capital=float(payload.get("initial_capital", 300_000)),
+                hold_period=int(payload.get("hold_period", 10)),
+                max_daily_buys=int(payload.get("max_daily_buys", 8)),
+                stop_loss=float(payload.get("stop_loss", -0.07)),
+                take_profit=float(payload.get("take_profit", 0.21)),
+            )
+            table = combo_sweep(
+                strategies,
+                [t or None for t in timings],
+                start=start,
+                end=end,
+                signal_start=payload.get("signal_start"),
+                signal_end=payload.get("signal_end"),
+                jobs=1,
+                window=int(payload.get("window", 180)),
+                min_history=int(payload.get("min_history", 60)),
+                config=cfg,
+                benchmark=payload.get("benchmark", DEFAULT_BENCHMARK),
+                regime_filter=regime_mask,
+                use_cache=True,
+                verbose=False,
+            )
+            return {"rows": _table_to_records(table)}
+
+        _run_async(task_id, _job)
+        return jsonify({"success": True, "data": {"task_id": task_id}})
+    except Exception as exc:
+        return jsonify({"success": False, "error": f"{exc}"}), 500

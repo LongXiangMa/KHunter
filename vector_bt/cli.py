@@ -11,7 +11,7 @@ import pandas as pd
 
 from vector_bt import __version__
 from vector_bt.engine import BacktestConfig
-from vector_bt.runner import compare, sweep
+from vector_bt.runner import combo_sweep, compare, sweep
 from vector_bt.signals import available_strategies
 from vector_bt.validate import validate_strategy
 
@@ -354,6 +354,51 @@ def cmd_regime_today(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_combo(args: argparse.Namespace) -> int:
+    """组合扫描：选股 × 择时 矩阵。"""
+    sels = available_strategies(args.khunter_root) if args.strategy == ["all"] else args.strategy
+    timings: list[str | None] = [None] + [t for t in args.timing if t != "off"]
+    regime_mask = _build_regime_filter(args)
+    table = combo_sweep(
+        sels,
+        timings,
+        start=args.start,
+        end=args.end,
+        signal_start=args.signal_range[0] if args.signal_range else None,
+        signal_end=args.signal_range[1] if args.signal_range else None,
+        db_path=args.db,
+        khunter_root=args.khunter_root,
+        jobs=args.jobs,
+        window=args.window,
+        min_history=args.min_history,
+        benchmark=None if args.no_benchmark else args.benchmark,
+        regime_filter=regime_mask,
+        use_cache=not args.no_cache,
+    )
+    if table.empty:
+        print("没有结果。")
+        return 0
+    cols = ["选股策略", "择时策略", "年化收益", "基准年化", "超额年化", "信息比率", "最大回撤", "交易笔数", "逐笔胜率"]
+    view = table[cols].copy()
+    for c in ("年化收益", "基准年化", "超额年化", "最大回撤", "逐笔胜率"):
+        view[c] = view[c].map(_pct)
+    view["信息比率"] = view["信息比率"].map(lambda v: f"{v:.2f}")
+    print(f"\n组合扫描结果（按超额年化排序，共 {len(table)} 组）\n")
+    print(view.head(args.show).to_string(index=False))
+    if args.out:
+        out = Path(args.out)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        table.to_csv(out, index=False, encoding="utf-8-sig")
+        print(f"\n完整结果已写出 {out}")
+        print("\n各选股策略的最佳择时：")
+        best = table.loc[table.groupby("选股策略")["超额年化"].idxmax()]
+        for _, r in best.sort_values("超额年化", ascending=False).iterrows():
+            print("  {:<16} → {:<8} 超额 {:+.2%}  IR {:.2f}  回撤 {:.1%}  交易 {}".format(
+                r["选股策略"], r["择时策略"], r["超额年化"], r["信息比率"],
+                r["最大回撤"], int(r["交易笔数"])))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vector_bt", description="KHunter 策略的向量化对比回测工具"
@@ -440,6 +485,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_rg.add_argument("--out", default=None)
     add_common(p_rg)
     p_rg.set_defaults(func=cmd_regime)
+
+    p_cb = sub.add_parser("combo", help="组合扫描：选股策略 × 择时策略 矩阵")
+    p_cb.add_argument("--strategy", nargs="+", default=["all"], help="选股策略（all=全部 19 个）")
+    p_cb.add_argument("--timing", nargs="+", default=["turtle", "bollinger"],
+                      help="择时策略（默认 turtle bollinger；始终包含「不启用」作为基线）")
+    p_cb.add_argument("--show", type=int, default=20)
+    p_cb.add_argument("--signal-range", nargs=2, metavar=("START", "END"), default=None,
+                      help="信号计算区间（默认同回测区间）")
+    p_cb.add_argument("--benchmark", default="000300")
+    p_cb.add_argument("--no-benchmark", action="store_true")
+    _add_regime_args(p_cb)
+    p_cb.add_argument("--no-cache", action="store_true")
+    p_cb.add_argument("--out", default=None)
+    add_common(p_cb)
+    p_cb.set_defaults(func=cmd_combo)
 
     p_today = sub.add_parser("regime-today", help="输出最新交易日的活跃度状态与开仓建议")
     p_today.add_argument("--end", default=None, help="指定交易日（默认取库中最新）")

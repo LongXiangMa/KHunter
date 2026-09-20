@@ -1354,7 +1354,42 @@
                         </div>
                     </div>
 
+                    <!-- 组合扫描：选股 × 择时 -->
+                    <div class="card" style="margin-bottom:16px;">
+                        <div class="card-body">
+                            <h3 style="margin:0 0 6px;">选股 × 择时 组合扫描</h3>
+                            <p style="color:#888;font-size:12px;margin:0 0 14px;">
+                                把上面勾选的每个选股策略与选中的每个择时策略两两配对回测，
+                                直接输出哪一对组合最好（始终包含「不启用择时」作为基线）。
+                                异步执行，可离开页面。组合数 = 选股数 × (择时数 + 1)，每组约 45 秒。
+                            </p>
+                            <div style="margin-bottom:12px;">
+                                <label style="font-size:13px;">参与配对的择时策略：</label>
+                                <div id="vector-combo-timings" style="display:flex;flex-wrap:wrap;gap:14px;font-size:13px;margin-top:6px;">
+                                    <span style="color:#999;">加载中...</span>
+                                </div>
+                            </div>
+                            <div style="margin-bottom:14px;">
+                                <button type="button" id="vector-combo-btn"
+                                        style="padding:8px 20px;cursor:pointer;">开始组合扫描</button>
+                                <span id="vector-combo-status" style="margin-left:12px;color:#666;font-size:13px;"></span>
+                            </div>
+                            <div id="vector-combo-progress" style="display:none;margin-bottom:14px;">
+                                <div style="height:8px;background:#f0f0f0;border-radius:4px;overflow:hidden;">
+                                    <div id="vector-combo-bar" style="height:100%;width:0%;background:#1677ff;transition:width .3s;"></div>
+                                </div>
+                            </div>
+                            <div id="vector-combo-result" style="display:none;">
+                                <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                                    <thead><tr id="vector-combo-head" style="background:#f5f5f5;"></tr></thead>
+                                    <tbody id="vector-combo-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- 参数扫描 -->
+                    <div class="card">
                     <div class="card">
                         <div class="card-body">
                             <h3 style="margin:0 0 6px;">参数扫描（止损 × 止盈 × 持有期）</h3>

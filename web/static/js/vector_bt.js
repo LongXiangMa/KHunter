@@ -62,6 +62,15 @@
           opt.textContent = t.name;
           sel.appendChild(opt);
         });
+        const comboBox = $('vector-combo-timings');
+        if (comboBox) {
+          comboBox.innerHTML = (d.timing_strategies || []).map((t) => `
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+              <input type="checkbox" class="vector-combo-timing-cb" value="${t.id}"
+                ${t.id === 'bollinger' ? 'checked' : ''}>
+              <span>${t.name}</span>
+            </label>`).join('');
+        }
       }
     } catch (err) {
       box.innerHTML = `<span style="color:#c00;">加载失败：${err.message}</span>`;
@@ -166,6 +175,92 @@
   }
 
   // ---------- 参数扫描 ----------
+  async function runCombo() {
+    const status = $('vector-combo-status');
+    const strategies = selectedStrategies();
+    if (!strategies.length) { status.textContent = '请先在上方选择选股策略'; return; }
+    const timings = Array.from(document.querySelectorAll('.vector-combo-timing-cb:checked')).map((cb) => cb.value);
+    const payload = {
+      strategies,
+      timings,
+      start: $('vector-start').value,
+      end: $('vector-end').value,
+      signal_start: $('vector-start').value,
+      signal_end: $('vector-end').value,
+      window: 120,
+      regime_filter: $('vector-regime').value,
+      regime_fixed: $('vector-regime').value === 'fixed' ? 0.01557 : null,
+      hold_period: parseInt($('vector-hold').value, 10) || 10,
+      max_daily_buys: parseInt($('vector-buys').value, 10) || 8,
+      stop_loss: (parseFloat($('vector-stop').value) || -7) / 100,
+      take_profit: (parseFloat($('vector-take').value) || 21) / 100,
+    };
+    if (!payload.start || !payload.end) { status.textContent = '请先选择回测区间'; return; }
+    const total = strategies.length * (timings.length + 1);
+    status.textContent = `提交中...（共 ${total} 组，预计 ${Math.ceil(total * 45 / 60)} 分钟）`;
+    $('vector-combo-result').style.display = 'none';
+    try {
+      const d = await getJSON(`${API}/combo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      $('vector-combo-progress').style.display = 'block';
+      pollCombo(d.task_id, total);
+    } catch (err) {
+      status.textContent = '失败：' + err.message;
+    }
+  }
+
+  function pollCombo(taskId, total) {
+    if (sweepTimer) clearInterval(sweepTimer);
+    sweepTimer = setInterval(async () => {
+      try {
+        const d = await getJSON(`${API}/task/${taskId}`);
+        if (d.status === 'running' || d.status === 'pending') {
+          $('vector-combo-bar').style.width = '50%';
+          return;
+        }
+        clearInterval(sweepTimer);
+        sweepTimer = null;
+        $('vector-combo-bar').style.width = '100%';
+        if (d.status === 'completed') {
+          const rows = d.result.rows || [];
+          $('vector-combo-status').textContent = `完成：${rows.length} 组组合`;
+          renderCombo(rows);
+        } else {
+          $('vector-combo-status').textContent = '失败：' + (d.error || '未知错误');
+        }
+      } catch (err) {
+        clearInterval(sweepTimer);
+        sweepTimer = null;
+        $('vector-combo-status').textContent = '查询失败：' + err.message;
+      }
+    }, 5000);
+  }
+
+  const COMBO_COLS = [
+    ['选股策略', (r) => r['选股策略']],
+    ['择时策略', (r) => r['择时策略']],
+    ['年化收益', (r) => fmtPct(r['年化收益'])],
+    ['超额年化', (r) => fmtPct(r['超额年化'])],
+    ['信息比率', (r) => fmtNum(r['信息比率'])],
+    ['最大回撤', (r) => fmtPct(r['最大回撤'])],
+    ['交易笔数', (r) => r['交易笔数']],
+    ['逐笔胜率', (r) => fmtPct(r['逐笔胜率'])],
+  ];
+
+  function renderCombo(rows) {
+    $('vector-combo-head').innerHTML = COMBO_COLS.map(([label]) =>
+      `<th style="text-align:left;padding:8px;border:1px solid #e0e0e0;">${label}</th>`).join('');
+    $('vector-combo-body').innerHTML = rows.map((r) => '<tr>' + COMBO_COLS.map(([, getter]) => {
+      const v = getter(r);
+      const style = String(v) === fmtPct(r['超额年化']) ? pctCell(r['超额年化']) : '';
+      return `<td style="padding:8px;border:1px solid #e0e0e0;${style}">${v === null || v === undefined ? '--' : v}</td>`;
+    }).join('') + '</tr>').join('');
+    $('vector-combo-result').style.display = 'block';
+  }
+
   async function runSweep() {
     const status = $('vector-sweep-status');
     const strategies = selectedStrategies();
@@ -257,6 +352,7 @@
     $('vector-regime-refresh').addEventListener('click', loadRegime);
     $('vector-run-btn').addEventListener('click', runBacktest);
     $('vector-sweep-btn').addEventListener('click', runSweep);
+    if ($('vector-combo-btn')) $('vector-combo-btn').addEventListener('click', runCombo);
     await loadStrategies();
     const d = await loadRegime();
     setDefaultDates(d && d.date);
