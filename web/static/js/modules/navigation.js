@@ -47,6 +47,7 @@ export function switchPage(page) {
         'backtest-results': '回测结果',
         'backtest-history': '回测历史',
         'regime-backtest': '自适应回测',
+        'vector': '量化验证',
         'khunter': '狩猎场',
         'khunter-track': '狩猎跟踪',
         'favorites': '收藏夹',
