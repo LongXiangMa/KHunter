@@ -54,6 +54,15 @@
           <input type="checkbox" class="vector-strategy-cb" value="${name}" ${name.includes('涨停横盘') ? 'checked' : ''}>
           <span>${name}</span>
         </label>`).join('');
+      const sel = $('vector-timing');
+      if (sel && sel.options.length <= 1) {
+        (d.timing_strategies || []).forEach((t) => {
+          const opt = document.createElement('option');
+          opt.value = t.id;
+          opt.textContent = t.name;
+          sel.appendChild(opt);
+        });
+      }
     } catch (err) {
       box.innerHTML = `<span style="color:#c00;">加载失败：${err.message}</span>`;
     }
@@ -78,6 +87,7 @@
       stop_loss: (parseFloat($('vector-stop').value) || -7) / 100,
       take_profit: (parseFloat($('vector-take').value) || 21) / 100,
       regime_filter: regime,
+      timing: $('vector-timing') ? ($('vector-timing').value || null) : null,
       regime_fixed: regime === 'fixed' ? 0.01557 : null,
       save: $('vector-save') ? $('vector-save').checked : false,
       backtest_name: `向量化回测 ${$('vector-start').value}~${$('vector-end').value}` +

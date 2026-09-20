@@ -50,7 +50,20 @@ def _table_to_records(table: pd.DataFrame) -> list[dict]:
 @vector_bp.route("/strategies", methods=["GET"])
 def list_strategies():
     """可选策略清单（含中文名）。"""
-    return jsonify({"success": True, "data": {"strategies": available_strategies()}})
+    from vector_bt.timing import TIMING_NAMES, available_timing_strategies
+
+    return jsonify(
+        {
+            "success": True,
+            "data": {
+                "strategies": available_strategies(),
+                "timing_strategies": [
+                    {"id": k, "name": TIMING_NAMES.get(k, k)}
+                    for k in available_timing_strategies()
+                ],
+            },
+        }
+    )
 
 
 @vector_bp.route("/regime", methods=["GET"])
@@ -122,6 +135,7 @@ def run_backtest_api():
             if payload.get("benchmark", DEFAULT_BENCHMARK) != "off"
             else None,
             regime_filter=regime_mask,
+            timing=payload.get("timing") or None,
             save=bool(payload.get("save", False)),
             backtest_name=payload.get("backtest_name"),
             use_cache=bool(payload.get("use_cache", True)),
