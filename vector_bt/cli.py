@@ -173,6 +173,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
     if args.signal_range:
         signal_start, signal_end = args.signal_range
     regime_mask = _build_regime_filter(args)
+    timing = getattr(args, "timing", None)
     table, results, _ = compare(
         names,
         start=args.start,
@@ -188,6 +189,7 @@ def cmd_compare(args: argparse.Namespace) -> int:
         config=config,
         benchmark=benchmark,
         regime_filter=regime_mask,
+        timing=None if timing in (None, "off") else timing,
         save=bool(getattr(args, "save", False)),
         backtest_name=getattr(args, "backtest_name", None),
         use_cache=not args.no_cache,
@@ -409,6 +411,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_cmp.add_argument("--out", default=None, help="排名表输出 CSV 路径")
     p_cmp.add_argument("--save", action="store_true",
                        help="把结果写入 KHunter 的 backtest_result/backtest_trade（Web 端「回测历史」可见）")
+    p_cmp.add_argument("--timing", default=None,
+                       help="结合择时策略：turtle/low_turtle/support/rsi/bollinger（默认不启用）")
     p_cmp.add_argument("--backtest-name", default=None, help="写入回测记录时使用的名称")
     add_common(p_cmp)
     p_cmp.set_defaults(func=cmd_compare)

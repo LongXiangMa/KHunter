@@ -100,6 +100,7 @@ def _pick_entries(
     signals: pd.DataFrame,
     changes: pd.DataFrame,
     config: BacktestConfig,
+    timing_buy_fn=None,
 ) -> dict[pd.Timestamp, list[str]]:
     """按日挑出入选股票：按信号分数排序，剔除涨停/停牌，限制每日买入上限。"""
     picks: dict[pd.Timestamp, list[str]] = {}
@@ -114,7 +115,13 @@ def _pick_entries(
         if row.empty:
             continue
         ordered = row.sort_values(ascending=False, kind="stable")
-        picks[date] = list(ordered.index[: config.max_daily_buys])
+        codes = list(ordered.index[: config.max_daily_buys])
+        # 结合择时：只在择时策略也给出买点时才建仓
+        if timing_buy_fn is not None:
+            day = date.strftime("%Y-%m-%d")
+            codes = [c for c in codes if timing_buy_fn(str(c), day)]
+        if codes:
+            picks[date] = codes
     return picks
 
 
@@ -148,6 +155,7 @@ def _simulate_trades(
     high_np: np.ndarray,
     low_np: np.ndarray,
     config: BacktestConfig,
+    timing_sell_fn=None,
 ) -> list[Trade]:
     """逐笔模拟并确定退出日。
 
@@ -193,6 +201,12 @@ def _simulate_trades(
                 if np.isfinite(high_v) and high_v >= entry_price * take_factor:
                     exit_idx, exit_price, reason = step, entry_price * take_factor, "止盈"
                     break
+                # 择时策略给出卖点 → 当日收盘提前离场
+                if timing_sell_fn is not None and timing_sell_fn(str(code), dates[step].strftime("%Y-%m-%d")):
+                    close_v = close_np[step, col]
+                    if np.isfinite(close_v):
+                        exit_idx, exit_price, reason = step, close_v, "择时离场"
+                        break
             if not np.isfinite(exit_price):
                 continue
             trades.append(
@@ -289,6 +303,11 @@ def run_backtest(
     *,
     high: pd.DataFrame | None = None,
     low: pd.DataFrame | None = None,
+    timing_buy: pd.DataFrame | None = None,
+    timing_sell: pd.DataFrame | None = None,
+    timing_buy_fn=None,
+    timing_sell_fn=None,
+    timing_name: str = "",
     benchmark: pd.Series | None = None,
     benchmark_name: str = "",
     strategy: str = "unnamed",
@@ -298,6 +317,8 @@ def run_backtest(
 
     signals：宽表，index=日期，columns=股票代码，value=信号分数（无信号为 NaN）
     close/high/low：同形状的价格宽表
+    timing_buy：择时买点矩阵（True=当日该股允许建仓）；与选股信号取交集
+    timing_sell：择时卖点矩阵（True=持仓期间该日提前离场）
     benchmark：基准指数收盘价序列（可选）。传入后会计算超额收益 / 信息比率 / Beta / Alpha
     """
     cfg = config or BacktestConfig()
@@ -314,11 +335,12 @@ def run_backtest(
     asset_returns = px.pct_change(fill_method=None)
     changes = asset_returns  # 涨跌停判定用当日涨跌幅
 
-    picks = _pick_entries(sig, changes.fillna(0.0), cfg)
+    picks = _pick_entries(sig, changes.fillna(0.0), cfg, timing_buy_fn=timing_buy_fn)
     close_np = px.to_numpy(dtype=float)
     high_np = hi.to_numpy(dtype=float)
     low_np = lo.to_numpy(dtype=float)
-    trades = _simulate_trades(picks, dates, columns, close_np, high_np, low_np, cfg)
+    trades = _simulate_trades(picks, dates, columns, close_np, high_np, low_np, cfg,
+                              timing_sell_fn=timing_sell_fn)
     held, adjust = _hold_and_adjust(trades, dates, columns, close_np, cfg)
 
     weight_sum = held.sum(axis=1)

@@ -257,6 +257,7 @@ def compare(
     config: BacktestConfig | None = None,
     benchmark: str | None = DEFAULT_BENCHMARK,
     regime_filter: pd.Series | None = None,
+    timing: str | None = None,
     save: bool = False,
     backtest_name: str | None = None,
     use_cache: bool = True,
@@ -317,6 +318,17 @@ def compare(
             print(f"  已应用状态过滤：{int(regime_filter.sum())}/{len(regime_filter)} 天允许开仓")
     close, high, low = price_frames(code_list, start, end, db_path=db_path)
 
+    # 择时策略：与选股信号结合（进场过滤 + 持仓期间提前离场）
+    # 采用按需评估而非全量矩阵：只需在选股命中的点和持仓期间调用择时，
+    # 成本从小时级降到秒级。
+    timing_eval = None
+    if timing:
+        from vector_bt.timing import TIMING_NAMES, TimingEvaluator
+
+        timing_eval = TimingEvaluator(timing, window=window, min_history=min_history, db_path=db_path)
+        if verbose:
+            print(f"  结合择时：{TIMING_NAMES.get(timing, timing)}（进场过滤 + 提前离场）", flush=True)
+
     benchmark_series = None
     if benchmark:
         try:
@@ -343,6 +355,9 @@ def compare(
             low=low,
             benchmark=benchmark_series,
             benchmark_name=str(benchmark or ""),
+            timing_buy_fn=timing_eval.is_buy if timing_eval else None,
+            timing_sell_fn=timing_eval.is_sell if timing_eval else None,
+            timing_name=timing or "",
             strategy=name,
             config=cfg,
         )
